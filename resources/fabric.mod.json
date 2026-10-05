@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "codeengine",
+  "version": "1.0.0",
+  "name": "Code Engine",
+  "description": "Code Engine utility client for Minecraft 1.21.11 (Fabric)",
+  "authors": [
+    "reqy0"
+  ],
+  "license": "ARR",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.nyx.NyxClient"
+    ]
+  },
+  "mixins": [
+    "codeengine.mixins.json"
+  ],
+  "accessWidener": "codeengine.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.19.0",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*",
+    "fabric-gui-imgui": "*"
+  },
+  "suggests": {
+    "baritone": "*"
+  },
+  "jars": [
+    {
+      "file": "META-INF/jars/fabric-gui-imgui-1.21.11-1.0.11+imgui.1.92.0.jar"
+    }
+  ]
+}

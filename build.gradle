@@ -1,0 +1,61 @@
+plugins { id 'fabric-loom' version '1.16-SNAPSHOT' }
+version = '1.0.0'
+group = 'dev.nyx'
+base { archivesName = 'codeengine' }
+repositories { mavenCentral(); maven { url = 'https://maven.fabricmc.net/' } }
+configurations { shade }
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    modImplementation files('libs/fabric-gui-imgui-1.21.11-1.0.11+imgui.1.92.0.jar')
+    implementation files('libs/imgui-java-binding-1.92.0.jar','libs/imgui-java-lwjgl3-1.92.0.jar')
+    // imgui-java is shaded (loose classes) so tiny-remapper recomputes its stack
+    // map frames -- the shipped ImGui.<clinit> has a frame the Java 21 verifier
+    // rejects, and only re-processing (not JiJ nesting) fixes it.
+    shade files('libs/imgui-java-binding-1.92.0.jar','libs/imgui-java-lwjgl3-1.92.0.jar','libs/imgui-java-natives-windows-1.92.0.jar')
+}
+loom {
+    mixin {
+        defaultRefmapName = 'codeengine-refmap.json'
+    }
+}
+jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    // Shade imgui-java as loose classes so tiny-remapper recomputes ImGui's stack
+    // map frames (the shipped ones fail the Java 21 verifier). Scope the exclude to
+    // ONLY these jars -- a global fabric.mod.json exclude would delete codeengine's
+    // own mod metadata. fabric-gui-imgui ships as a SEPARATE mod alongside this one.
+    from(configurations.shade.collect { zipTree(it) }) {
+        exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+        exclude 'module-info.class', 'fabric.mod.json', 'META-INF/jars/**'
+    }
+}
+// Post-process the FINAL remapped jar: strip the imgui-java jars Loom auto-nests
+// (their ImGui has a bad stack map) and inject fabric-gui-imgui AFTER remapJar so
+// tiny-remapper never re-remaps the nested mod's already-intermediary names.
+tasks.named('remapJar') {
+    doLast {
+        def jar = archiveFile.get().asFile
+        def nested = file('libs/fabric-gui-imgui-1.21.11-1.0.11+imgui.1.92.0.jar')
+        def tmp = new File(jar.parentFile, jar.name + '.tmp')
+        new java.util.zip.ZipOutputStream(tmp.newOutputStream()).withCloseable { out ->
+            new java.util.zip.ZipInputStream(jar.newInputStream()).withCloseable { zin ->
+                def e
+                while ((e = zin.nextEntry) != null) {
+                    if (e.name.startsWith('META-INF/jars/')) continue
+                    out.putNextEntry(new java.util.zip.ZipEntry(e.name))
+                    out << zin
+                    out.closeEntry()
+                }
+            }
+            out.putNextEntry(new java.util.zip.ZipEntry('META-INF/jars/' + nested.name))
+            out << nested.bytes
+            out.closeEntry()
+        }
+        jar.delete(); tmp.renameTo(jar)
+    }
+}
+tasks.withType(JavaCompile).configureEach { options.compilerArgs += ["-Xmaxerrs","2000","-Xmaxwarns","0"] }
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
